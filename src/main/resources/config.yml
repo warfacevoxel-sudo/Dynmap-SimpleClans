@@ -15,9 +15,13 @@ language:
   fee-disabled: "disabled"
   verified: "verified"
   unverified: "unverified"
+  emblem-set: "&bThe emblem was set successfully! The change will take effect soon..."
+  emblem-invalid-url: "&cInvalid URL! Must be a valid https:// link"
+  emblem-cleared: "&bThe emblem was removed. The default icon will be restored shortly."
 help-command:
   - "&b[Dynmap-SimpleClans] Commands:"
   - "&b/clanmap seticon [iconname] - sets the clan icon"
+  - "&b/clanmap setemblem [url] - sets the clan emblem from any https:// image URL"
   - "&c/clanmap reload - reloads the plugin and its configurations"
   - "&b/clanmap help - shows this help"
 hide-warring-players: true         # Hide members of clans while the clans are at war

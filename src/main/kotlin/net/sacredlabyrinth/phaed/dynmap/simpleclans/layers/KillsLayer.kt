@@ -13,6 +13,10 @@ class KillsLayer(private val iconStorage: IconStorage, config: LayerConfig, mark
     Layer("simpleclans.layers.kill", config, markerAPI) {
 
     private val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern(config.getString("time-format", "HH:mm:ss"))
+    // Capture plugin reference at construction time so the BukkitRunnable below
+    // doesn't call getInstance() after a PlugManX reload (when instance may be null
+    // or point to a different object).
+    private val plugin: DynmapSimpleClans = DynmapSimpleClans.getInstance()
 
     fun createMarker(kill: Kill) {
         val vclan = kill.victim.clan
@@ -33,7 +37,7 @@ class KillsLayer(private val iconStorage: IconStorage, config: LayerConfig, mark
 
         object : BukkitRunnable() {
             override fun run() = marker.deleteMarker()
-        }.runTaskLater(DynmapSimpleClans.getInstance(), config.getInt("visible-seconds", 300) * 20L)
+        }.runTaskLater(plugin, config.getInt("visible-seconds", 300) * 20L)
     }
 
     private fun formatLabel(kill: Kill): String {

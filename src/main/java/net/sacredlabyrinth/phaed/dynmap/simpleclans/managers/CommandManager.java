@@ -13,6 +13,8 @@ import org.bukkit.entity.Player;
 import org.dynmap.markers.MarkerIcon;
 import org.jetbrains.annotations.NotNull;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -50,6 +52,12 @@ public final class CommandManager implements TabExecutor {
                 Player player = (Player) sender;
                 if (cmd.equalsIgnoreCase("seticon") && args.length == 2) {
                     return setIcon(player, args[1]);
+                }
+                if (cmd.equalsIgnoreCase("setemblem") && args.length == 2) {
+                    return setEmblem(player, args[1]);
+                }
+                if (cmd.equalsIgnoreCase("clearemblem") && args.length == 1) {
+                    return clearEmblem(player);
                 }
             }
         }
@@ -98,7 +106,7 @@ public final class CommandManager implements TabExecutor {
         }
 
         if (plugin.getHomeLayer() == null) {
-            player.sendMessage("layer-disabled");
+            player.sendMessage(lang("layer-disabled"));
             return true;
         }
 
@@ -123,6 +131,80 @@ public final class CommandManager implements TabExecutor {
         return true;
     }
 
+    private boolean setEmblem(@NotNull Player player, @NotNull String url) {
+        ClanPlayer cp = plugin.getClanManager().getClanPlayer(player);
+        if (cp == null) {
+            player.sendMessage(lang("not-member"));
+            return true;
+        }
+
+        // Can't be null because of the check in clanManager#getClanPlayer
+        Clan clan = Objects.requireNonNull(cp.getClan());
+
+        if (!player.hasPermission("simpleclans.map.setemblem") || !cp.isLeader()) {
+            player.sendMessage(lang("no-permission"));
+            return true;
+        }
+
+        if (plugin.getHomeLayer() == null) {
+            player.sendMessage(lang("layer-disabled"));
+            return true;
+        }
+
+        if (!isValidEmblemUrl(url)) {
+            player.sendMessage(lang("emblem-invalid-url"));
+            return true;
+        }
+
+        Flags flags = new Flags(clan.getFlags());
+        flags.put("emblemurl", url);
+        clan.setFlags(flags.toJSONString());
+
+        plugin.getHomeLayer().upsertMarker(clan);
+        player.sendMessage(lang("emblem-set"));
+        return true;
+    }
+
+    private boolean isValidEmblemUrl(@NotNull String url) {
+        if (!url.startsWith("https://")) return false;
+        try {
+            new URL(url).toURI();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean clearEmblem(@NotNull Player player) {
+        ClanPlayer cp = plugin.getClanManager().getClanPlayer(player);
+        if (cp == null) {
+            player.sendMessage(lang("not-member"));
+            return true;
+        }
+
+        // Can't be null because of the check in clanManager#getClanPlayer
+        Clan clan = Objects.requireNonNull(cp.getClan());
+
+        if (!player.hasPermission("simpleclans.map.setemblem") || !cp.isLeader()) {
+            player.sendMessage(lang("no-permission"));
+            return true;
+        }
+
+        if (plugin.getHomeLayer() == null) {
+            player.sendMessage(lang("layer-disabled"));
+            return true;
+        }
+
+        Flags flags = new Flags(clan.getFlags());
+        flags.remove("emblemurl");
+        clan.setFlags(flags.toJSONString());
+
+        plugin.getHomeLayer().clearEmblemIcon(clan.getTag());
+        plugin.getHomeLayer().upsertMarker(clan);
+        player.sendMessage(lang("emblem-cleared"));
+        return true;
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (!command.getName().equalsIgnoreCase("clanmap")) {
@@ -130,7 +212,7 @@ public final class CommandManager implements TabExecutor {
         }
 
         if (args.length == 1) {
-            return Arrays.asList("seticon", "help", "reload");
+            return Arrays.asList("seticon", "setemblem", "clearemblem", "help", "reload");
         }
 
         if (args[0].equalsIgnoreCase("seticon")) {
@@ -151,6 +233,11 @@ public final class CommandManager implements TabExecutor {
             }
 
             return icons;
+        }
+
+        if (args[0].equalsIgnoreCase("setemblem")) {
+            // No tab completions for URLs
+            return Collections.emptyList();
         }
 
         return Collections.emptyList();

@@ -73,13 +73,24 @@ public class DynmapSimpleClans extends JavaPlugin {
         instance = this;
         saveDefaultConfig();
         if (reload()) {
-            loadTasks();
             new CommandManager(this);
             getPluginManager().registerEvents(new DynmapSimpleClansListener(this), this);
         }
     }
 
+    @Override
+    public void onDisable() {
+        // Cancel all tasks owned by this plugin (covers HideWarringClansTask and any
+        // pending async emblem-download callbacks) so they don't run after PlugManX unloads us.
+        getScheduler().cancelTasks(this);
+        // Allow the old ClassLoader to be GC'd after PlugManX reload.
+        instance = null;
+    }
+
     public boolean reload() {
+        // Cancel running tasks (HideWarringClansTask, pending emblem downloads, etc.)
+        // before re-creating everything so we don't accumulate duplicate task instances.
+        getScheduler().cancelTasks(this);
         reloadConfig();
 
         try {
@@ -92,6 +103,7 @@ public class DynmapSimpleClans extends JavaPlugin {
 
         saveDefaultImages();
         loadLayers();
+        loadTasks();
 
         return true;
     }

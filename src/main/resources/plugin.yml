@@ -22,3 +22,5 @@ permissions:
     description: Can use all icons
   simpleclans.map.seticon:
     description: Can set an icon
+  simpleclans.map.setemblem:
+    description: Can set a clan emblem from URL

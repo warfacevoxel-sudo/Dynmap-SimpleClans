@@ -24,8 +24,9 @@ class DynmapSimpleClansListener(val plugin: DynmapSimpleClans) : Listener {
     fun onModtag(event: TagChangeEvent) = upsertMarkers(event.clan)
 
     @EventHandler(priority = MONITOR, ignoreCancelled = true)
-    fun onKill(event: AddKillEvent) =
+    fun onKill(event: AddKillEvent) {
         plugin.killsLayer?.createMarker(Kill(event.attacker, event.victim, LocalDateTime.now()))
+    }
 
     private fun deleteMarkers(clanTag: String) {
         plugin.homeLayer?.markerSet?.findMarker(clanTag)?.deleteMarker()

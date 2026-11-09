@@ -30,6 +30,9 @@ class DynmapSimpleClansListener(val plugin: DynmapSimpleClans) : Listener {
     private fun deleteMarkers(clanTag: String) {
         plugin.homeLayer?.markerSet?.findMarker(clanTag)?.deleteMarker()
         plugin.landsLayer?.markerSet?.findAreaMarker(clanTag)?.deleteMarker()
+        plugin.landsLayer?.markerSet?.polyLineMarkers
+            ?.filter { it.markerID.startsWith("$clanTag:") }
+            ?.forEach { it.deleteMarker() }
     }
 
     private fun upsertMarkers(clan: Clan) {

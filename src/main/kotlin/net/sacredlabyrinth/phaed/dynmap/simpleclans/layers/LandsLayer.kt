@@ -8,9 +8,8 @@ import net.sacredlabyrinth.phaed.simpleclans.hooks.protection.Coordinate
 import net.sacredlabyrinth.phaed.simpleclans.hooks.protection.Land
 import net.sacredlabyrinth.phaed.simpleclans.managers.ClanManager
 import net.sacredlabyrinth.phaed.simpleclans.managers.ProtectionManager
-import org.dynmap.markers.AreaMarker
+import org.bukkit.Bukkit
 import org.dynmap.markers.MarkerAPI
-import java.util.*
 
 class LandsLayer(
     clanManager: ClanManager,
@@ -20,56 +19,84 @@ class LandsLayer(
 ) : Layer("simpleclans.layers.lands", config, markerAPI) {
 
     init {
-        // Delete old markers
-        markerSet.areaMarkers.forEach(AreaMarker::deleteMarker)
-
-        // Create/update new markers
+        markerSet.areaMarkers.forEach { it.deleteMarker() }
+        markerSet.polyLineMarkers.forEach { it.deleteMarker() }
         clanManager.clans.forEach(this::upsertMarker)
     }
 
-
     fun upsertMarker(clan: Clan) {
         val tag = clan.tag
-        val loc = clan.homeLocation ?: return
-        val world = loc.world ?: return
-        val worldName = world.name
-        val label = Helper.getClanLabel(config, clan)
-
-        val lands = protectionManager.getLandsAt(loc)
-        val coordinates = lands.map(Land::getCoordinates).flatMap(MutableList<Coordinate>::toList)
-        val xCoords = coordinates.map(Coordinate::getX).toDoubleArray()
-        val zCoords = coordinates.map(Coordinate::getZ).toDoubleArray()
-
-        if (xCoords.isEmpty() || zCoords.isEmpty()) {
-            debug("No coordinates found for $tag clan.")
-            return
-        }
-
+        val oldMarkers = markerSet.polyLineMarkers.filter { it.markerID.startsWith("$tag:") }
         if (isHidden(tag)) {
-            debug("[LandsLayer] Marker can't be updated/created, because clan($tag) is hidden!")
+            oldMarkers.forEach { it.deleteMarker() }
             return
         }
 
-        val marker = markerSet.findAreaMarker(tag)
-            ?: markerSet.createAreaMarker(tag, label, true, worldName, xCoords, zCoords, true)
-
-        var fillColor = config.getString("style.fill.color", "#57b356")
-        var lineColor = config.getString("style.line.color", "#2d682d")
-        if (config.getBoolean("style.based-on-tag", false)) {
-            fillColor = HEXColor.of(clan.color).code
-            lineColor = fillColor
+        val world = clan.homeLocation?.world
+        if (world == null) {
+            oldMarkers.forEach { it.deleteMarker() }
+            return
         }
 
-        val fillOpacity = config.getDouble("style.fill.opacity", 0.35)
+        // Only draw claims owned by clan members. Looking up claims at the home location
+        // could accidentally select an administrator's private when the home is inside it.
+        val lands = clan.members.asSequence()
+            .map { Bukkit.getOfflinePlayer(it.uniqueId) }
+            .flatMap { protectionManager.getLandsOf(it, world).asSequence() }
+            .distinct()
+            .toList()
+        val boundaries = exteriorEdges(lands)
+        if (boundaries.isEmpty()) {
+            oldMarkers.forEach { it.deleteMarker() }
+            debug("No member-owned coordinates found for $tag clan; removed stale land markers.")
+            return
+        }
+
+        var lineColor = config.getString("style.line.color", "#2d682d")
+        if (config.getBoolean("style.based-on-tag", false)) lineColor = HEXColor.of(clan.color).code
+        val color = Integer.valueOf(lineColor.replace("#", ""), 16)
         val lineOpacity = config.getDouble("style.line.opacity", 0.8)
         val lineWeight = config.getInt("style.line.weight", 3)
+        val label = Helper.getClanLabel(config, clan)
 
-        marker.setLabel(label, true)
-        marker.description = Helper.colorToHTML(clan.description)
-        marker.setFillStyle(fillOpacity, Integer.valueOf(fillColor.replace("#", ""), 16))
-        marker.setLineStyle(lineWeight, lineOpacity, Integer.valueOf(lineColor.replace("#", ""), 16))
-        marker.setCornerLocations(xCoords, zCoords)
+        // Draw only exposed claim edges. Shared edges between touching claims disappear.
+        val wantedIds = boundaries.indices.map { "$tag:$it" }.toSet()
+        oldMarkers.filter { it.markerID !in wantedIds }.forEach { it.deleteMarker() }
+        boundaries.forEachIndexed { index, edge ->
+            val id = "$tag:$index"
+            val marker = markerSet.findPolyLineMarker(id) ?: markerSet.createPolyLineMarker(
+                id, label, true, world.name,
+                doubleArrayOf(edge.first.x, edge.second.x),
+                doubleArrayOf(0.0, 0.0),
+                doubleArrayOf(edge.first.z, edge.second.z), true
+            )
+            marker.setLabel(label, true)
+            marker.setLineStyle(lineWeight, lineOpacity, color)
+            marker.setCornerLocations(
+                doubleArrayOf(edge.first.x, edge.second.x),
+                doubleArrayOf(0.0, 0.0),
+                doubleArrayOf(edge.first.z, edge.second.z)
+            )
+        }
     }
 
+    private data class Point(val x: Double, val z: Double)
+    private data class Edge(val first: Point, val second: Point)
+
+    private fun exteriorEdges(lands: List<Land>): List<Edge> {
+        val edges = linkedSetOf<Edge>()
+        for (land in lands) {
+            val points = land.coordinates.map(Coordinate::point)
+            if (points.size < 2) continue
+            for (i in points.indices) {
+                val edge = Edge(points[i], points[(i + 1) % points.size])
+                val reverse = Edge(edge.second, edge.first)
+                if (!edges.remove(reverse)) edges.add(edge)
+            }
+        }
+        return edges.toList()
+    }
+
+    private fun Coordinate.point() = Point(x, z)
     private fun isHidden(tag: String) = config.getStringList("hidden-lands").contains(tag)
 }

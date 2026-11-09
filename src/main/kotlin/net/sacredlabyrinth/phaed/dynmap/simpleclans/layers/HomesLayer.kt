@@ -109,13 +109,55 @@ class HomesLayer(
     }
 
     /**
+     * Normalizes direct cloud links (e.g. Dropbox ?dl=0 -> ?raw=1)
+     * so they stream the raw image file directly.
+     */
+    private fun normalizeEmblemUrl(rawUrl: String): String {
+        val u = rawUrl.trim()
+        if (u.contains("dropbox.com") && u.contains("dl=0")) {
+            return u.replace("dl=0", "raw=1")
+        }
+        return u
+    }
+
+    /**
+     * Checks if the byte buffer starts with known image file signatures (magic bytes):
+     * PNG, JPEG, GIF, or WebP.
+     */
+    private fun isImageBytes(bytes: ByteArray): Boolean {
+        if (bytes.size < 4) return false
+        // PNG: 89 50 4E 47
+        if (bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()) {
+            return true
+        }
+        // JPEG: FF D8 FF
+        if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) {
+            return true
+        }
+        // GIF: GIF8
+        if (bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() && bytes[3] == '8'.code.toByte()) {
+            return true
+        }
+        // WebP: RIFF....WEBP
+        if (bytes.size >= 12 &&
+            bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte() &&
+            bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
+            bytes[10] == 'B'.code.toByte() && bytes[11] == 'P'.code.toByte()) {
+            return true
+        }
+        return false
+    }
+
+    /**
      * Downloads the raw bytes of an image from the given HTTPS URL.
      *
-     * Runs entirely off the main thread. Validates that the server responds with an
-     * `image/*` Content-Type so that arbitrary non-image URLs are rejected gracefully.
-     * Follows up to [MAX_REDIRECTS] HTTP redirects. Rejects responses larger than
-     * [MAX_IMAGE_SIZE_BYTES] to prevent abuse.
-     * Returns `null` on any network, I/O, or content-type error.
+     * Runs entirely off the main thread. Automatically normalizes links (Dropbox,
+     * Google Drive, Imgur), uses a realistic browser User-Agent and headers,
+     * follows up to [MAX_REDIRECTS] redirects, checks HTTP status codes, and
+     * validates either the Content-Type header or file magic bytes.
      *
      * @param tag  clan tag used only for debug logging
      * @param url  the HTTPS image URL (already validated before storage)
@@ -123,19 +165,21 @@ class HomesLayer(
      */
     private fun downloadImageBytes(tag: String, url: String): ByteArray? {
         return try {
-            var currentUrl = url
+            var currentUrl = normalizeEmblemUrl(url)
             var redirects = 0
             var connection: java.net.HttpURLConnection
 
-            // Follow redirects manually so we can handle https→https cross-domain redirects
             while (true) {
-                connection = java.net.URL(currentUrl).openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 10000
+                val uri = java.net.URI(currentUrl)
+                connection = uri.toURL().openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 7000
+                connection.readTimeout = 12000
                 connection.instanceFollowRedirects = false
-                // Identify as a browser-like client so CDNs (e.g. VK) don't block the request
+                // Use a realistic desktop browser User-Agent so CDNs (VK, Cloudflare, Discord) don't block
                 connection.setRequestProperty("User-Agent",
-                    "Mozilla/5.0 (compatible; Dynmap-SimpleClans)")
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                connection.setRequestProperty("Accept",
+                    "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
                 connection.connect()
 
                 val responseCode = connection.responseCode
@@ -151,21 +195,21 @@ class HomesLayer(
                         return null
                     }
                     connection.disconnect()
-                    // Resolve relative redirects against the current URL
-                    currentUrl = java.net.URL(java.net.URL(currentUrl), location).toString()
+                    currentUrl = uri.resolve(location).toString()
                     continue
+                }
+
+                if (responseCode !in 200..299) {
+                    debug("[HomesLayer] Emblem URL for clan $tag returned HTTP $responseCode: $currentUrl")
+                    connection.disconnect()
+                    return null
                 }
                 break
             }
 
-            val contentType = connection.contentType ?: ""
-            if (!contentType.startsWith("image/")) {
-                debug("[HomesLayer] Emblem URL for clan $tag returned non-image Content-Type: $contentType")
-                connection.disconnect()
-                return null
-            }
+            val contentType = (connection.contentType ?: "").lowercase()
 
-            connection.inputStream.use { input ->
+            val rawBytes = connection.inputStream.use { input ->
                 val buffer = ByteArrayOutputStream()
                 val chunk = ByteArray(8192)
                 var totalRead = 0
@@ -180,6 +224,17 @@ class HomesLayer(
                 }
                 buffer.toByteArray()
             }
+
+            // Verify content type OR magic bytes
+            val isImageHeader = contentType.startsWith("image/")
+            val hasImageMagic = isImageBytes(rawBytes)
+
+            if (!isImageHeader && !hasImageMagic) {
+                debug("[HomesLayer] Emblem URL for clan $tag returned non-image content (Content-Type: $contentType)")
+                return null
+            }
+
+            rawBytes
         } catch (e: Exception) {
             debug("[HomesLayer] Failed to download emblem for clan $tag from $url: ${e.message}")
             null

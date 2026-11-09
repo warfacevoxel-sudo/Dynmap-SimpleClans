@@ -1,6 +1,7 @@
 name: ${project.name}
 main: net.sacredlabyrinth.phaed.dynmap.simpleclans.DynmapSimpleClans
 version: ${project.version}
+api-version: '1.21'
 website: ${project.url}
 author: phaed
 authors:

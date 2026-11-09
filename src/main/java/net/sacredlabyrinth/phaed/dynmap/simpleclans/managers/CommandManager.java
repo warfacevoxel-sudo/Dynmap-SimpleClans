@@ -53,10 +53,11 @@ public final class CommandManager implements TabExecutor {
                 if (cmd.equalsIgnoreCase("seticon") && args.length == 2) {
                     return setIcon(player, args[1]);
                 }
-                if (cmd.equalsIgnoreCase("setemblem") && args.length == 2) {
-                    return setEmblem(player, args[1]);
+                if ((cmd.equalsIgnoreCase("setemblem") || cmd.equalsIgnoreCase("emblem")) && args.length >= 2) {
+                    String url = String.join("", java.util.Arrays.copyOfRange(args, 1, args.length));
+                    return setEmblem(player, url);
                 }
-                if (cmd.equalsIgnoreCase("clearemblem") && args.length == 1) {
+                if ((cmd.equalsIgnoreCase("clearemblem") || cmd.equalsIgnoreCase("resetemblem")) && args.length == 1) {
                     return clearEmblem(player);
                 }
             }
@@ -166,7 +167,7 @@ public final class CommandManager implements TabExecutor {
     }
 
     private boolean isValidEmblemUrl(@NotNull String url) {
-        if (!url.startsWith("https://")) return false;
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return false;
         try {
             new URL(url).toURI();
             return true;
@@ -196,7 +197,7 @@ public final class CommandManager implements TabExecutor {
         }
 
         Flags flags = new Flags(clan.getFlags());
-        flags.remove("emblemurl");
+        flags.put("emblemurl", "");
         clan.setFlags(flags.toJSONString());
 
         plugin.getHomeLayer().clearEmblemIcon(clan.getTag());

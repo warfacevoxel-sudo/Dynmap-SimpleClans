@@ -85,7 +85,6 @@
           <target>1.8</target>
           <showDeprecation>true</showDeprecation>
           <showWarnings>true</showWarnings>
-          <fork>true</fork>
         </configuration>
       </plugin>
       <plugin>
@@ -292,8 +291,9 @@
     </dependencies>
   </dependencyManagement>
   <properties>
-    <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <kotlin.version>1.6.21</kotlin.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
   </properties>
 </project>
+

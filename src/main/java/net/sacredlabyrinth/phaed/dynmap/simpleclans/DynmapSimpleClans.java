@@ -97,7 +97,7 @@ public class DynmapSimpleClans extends JavaPlugin {
             loadDependencies();
         } catch (IllegalStateException ex) {
             getLogger().severe(ex.getMessage());
-            getPluginLoader().disablePlugin(this);
+            getPluginManager().disablePlugin(this);
             return false;
         }
 
